@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>정보의 퇴적 (Stack of Fragments)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400&display=swap');
+
+        body {
+            font-family: 'Noto Serif KR', serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #0d0d0d;
+            color: #E7E9EA;
+            overflow: hidden;
+            perspective: 800px;
+        }
+
+        #comment-stack-container {
+            width: 80%;
+            max-width: 650px;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            overflow-y: auto;
+            padding: 20px;
+            border: 1px solid #222;
+            background: rgba(10, 10, 10, 0.2);
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.05);
+        }
+        
+        #comment-stack-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        #comment-stack-container::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        .comment-item {
+            background-color: transparent;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            
+            /* ★★★ 핵심 변경점 1: 애니메이션 대신 transition 사용 ★★★ */
+            /* 모든 변화가 애니메이션 효과를 갖도록 설정 */
+            transition: max-height 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        opacity 1.5s ease,
+                        transform 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                        filter 1.2s ease,
+                        padding 0.8s ease;
+            
+            /* 초기 상태: 완전히 접혀있고 보이지 않음 */
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            padding-left: 20px;
+            padding-right: 20px;
+            transform: translateY(30px) rotateX(-15deg);
+            filter: blur(5px);
+        }
+
+        /* JavaScript에서 이 클래스를 추가하면, 위 초기 상태에서 아래 상태로 변화가 일어남 */
+        .comment-item.visible {
+            max-height: 300px; /* 펼쳐질 최대 높이 (JS에서 실제 높이로 덮어씀) */
+            opacity: 1;
+            padding-top: 20px;
+            padding-bottom: 20px;
+            margin-bottom: 15px; /* 펼쳐졌을 때만 마진 적용 */
+            transform: translateY(0) rotateX(0deg);
+            filter: blur(0px);
+        }
+
+        .comment-text {
+            font-size: 1.4em;
+            font-weight: 400;
+            margin-bottom: 15px;
+            line-height: 1.6;
+            color: #d1d1d1;
+        }
+
+        .comment-author {
+            font-size: 0.9em;
+            color: #666;
+            text-align: right;
+            font-weight: 300;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="comment-stack-container">
+        </div>
+
+    <script>
+        const stackContainer = document.getElementById('comment-stack-container');
+        const MAX_COMMENTS_ON_SCREEN = 25;
+
+        async function fetchAndDisplayComment() {
+            try {
+                const response = await fetch('/api/random-comment');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error("서버 오류:", data.error);
+                    return;
+                }
+                
+                // 1. 새로운 댓글 요소 생성 (아직은 보이지 않는 상태)
+                const newCommentElement = document.createElement('div');
+                newCommentElement.classList.add('comment-item');
+
+                const textElement = document.createElement('p');
+                textElement.classList.add('comment-text');
+                textElement.innerHTML = `&ldquo;${data.text}&rdquo;`;
+
+                const authorElement = document.createElement('p');
+                authorElement.classList.add('comment-author');
+                authorElement.textContent = `- ${data.author}`;
+                
+                newCommentElement.appendChild(textElement);
+                newCommentElement.appendChild(authorElement);
+
+                // 2. 스택의 맨 위에 보이지 않는 상태로 우선 추가
+                stackContainer.prepend(newCommentElement);
+
+                // ★★★ 핵심 변경점 2: 애니메이션 트리거 ★★★
+                // 브라우저가 요소를 인지한 바로 다음 프레임에서 'visible' 클래스를 추가하여
+                // transition 애니메이션을 발동시킵니다.
+                requestAnimationFrame(() => {
+                    // 실제 내용물의 높이를 계산하여 max-height에 적용
+                    const height = newCommentElement.scrollHeight;
+                    newCommentElement.style.maxHeight = height + 'px';
+                    newCommentElement.classList.add('visible');
+                });
+
+                // 4. 오래된 댓글 자동 삭제 로직 (기존과 동일)
+                if (stackContainer.children.length > MAX_COMMENTS_ON_SCREEN) {
+                    const oldestComment = stackContainer.lastElementChild;
+                    oldestComment.style.transition = "opacity 1.5s ease"; // 사라질 땐 opacity만
+                    oldestComment.classList.remove('visible'); // visible 클래스를 제거하여 다시 접히고 투명해지도록 함
+
+                    setTimeout(() => {
+                        oldestComment.remove();
+                    }, 1500);
+                }
+
+            } catch (error) {
+                console.error('댓글을 가져오는 데 실패했습니다:', error);
+            }
+        }
+
+        setTimeout(fetchAndDisplayComment, 1000);
+        setInterval(fetchAndDisplayComment, 3000);
+    </script>
+</body>
+</html>
